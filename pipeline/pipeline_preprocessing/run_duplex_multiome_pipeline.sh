@@ -1,16 +1,4 @@
 #!/bin/bash
-#SBATCH --partition=bch-compute	 			# queue to be used
-#SBATCH --time=6-00:00:00	 			# Running time (in hours-minutes-seconds)
-#SBATCH --job-name=UMB1117_Duplex_Multiome_Heart			# Job name
-#SBATCH --mail-type=BEGIN,END,FAIL 		# send and email when the job begins, ends or fails
-#SBATCH --mail-user=shulin_mao@fas.harvard.edu	 	# Email address to send the job status
-#SBATCH --output=output.txt 			# Name of the output file
-#SBATCH --mem=8G
-#SBATCH --nodes=1				# Number of compute nodes
-
-source /lab-share/Gene-Lee-e2/Public/home/shulin/softwares/anaconda3/etc/profile.d/conda.sh
-conda activate /lab-share/Gene-Lee-e2/Public/home/shulin/softwares/mambaforge/envs/tn5
-source /programs/biogrids.shrc
 
 snakefile=/lab-share/Gene-Lee-e2/Public/home/shulin/Duplex_multiome/scripts/pipeline_preprocessing/Snakefile.Duplex_Multiome
 profile=/lab-share/Gene-Lee-e2/Public/home/shulin/Duplex_multiome/scripts/slurm_config

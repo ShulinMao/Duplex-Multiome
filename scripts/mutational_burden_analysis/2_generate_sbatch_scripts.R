@@ -91,7 +91,7 @@ for(case_id in case_id_list){
   }
 }
 
-file_name <- paste0(directory, "run.sh")
+file_name <- paste0(directory, "run_all_sbatch_scripts.sh")
 sink(file_name)
 for(case_id in case_id_list){
   
