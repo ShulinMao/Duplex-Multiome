@@ -199,7 +199,9 @@ Before running this pipeline, ensure that the following files are prepared:
 - Black region `.bed` file
 - Autosome `.bed` file
 
-A template script for running the Snakemake workflow is provided: `./pipeline/pipeline_preprocessing/run_duplex_multiome_pipeline.sh`. Before executing the pipeline, update the paths to the required files/software in the template script and specify the strand barcodes used in your libraries.
+A template script for running the Snakemake workflow is provided: `./pipeline/pipeline_preprocessing/run_duplex_multiome_pipeline.sh`. Before executing the pipeline, 
+1. update the paths to the required files/software in the template script and specify the strand barcodes used in your libraries;
+2. edit the file `./pipeline/slurm_config/cluster-config.yml` for your slurm system.
 
 Once everything is set up, run the pipeline using:
 ```bash
@@ -254,6 +256,108 @@ We provide the template scripts under `./scripts/ssDNA_damage_analysis`.
 2. Combine the burden and spectrum from all samples:
     - Run `2_single_strand_damage_burden.R` for the burden analysis.
     - Run `3_single_strand_damage_spectrum.R` forthe spectrum analysis.
+
+---
+### Demo
+We provide a demo to help you get started with the somatic sSNV analysis. The demo is located in the folder `demo` and starts from an example output of CellRanger-arc.
+
+We ramdomly selected four cells from a sample, which is in `demo/CellRanger_output`. This includes 
+- `atac_possorted_bam.bam`: bam file of processed ATAC reads 
+- `per_barcode_metrics.csv`: table of cell barcodes
+
+Additionally, we generated mock data under `demo/bulk_data`:
+- `demo_bulk.bam`: mock bulk WGS bam file
+- `demo_germline_variants.vcf.gz`: mock germline variants vcf file
+- `bulk_bam_list.txt`: list of bulk BAM files (contains only mock data)
+
+**Important**: These mock files are for the demo only and should not be used in real analyses. In your actual workflow, replace them with paths to your real bulk WGS BAM files and germline VCFs. These are used as a panel of normals to filter out germline vairants and potential cross-sample contamination.
+
+#### Running the demo
+The script to run this demo is: `/demo/run_duplex_multiome_mutation_analysispipeline.sh`
+
+Before running the demo, edit the following variables in the script:
+```bash
+ # reference
+reference_genome=/your/path
+known_snp=/your/path
+masked_region=/your/path
+autosomes_bed=/your/path
+
+# Go dir for DuplexTools
+go_dir=/your/path
+```
+
+In your real analysis, you’ll also need to specify correct paths for:
+```bash
+# -----------------------------------------------------------------------------
+# basic info of samples
+dir=$(pwd)
+sample_name=Duplex_multiome_demo
+base_dir=${dir}/${sample_name}/single_cell && mkdir -p ${base_dir}
+tmp=${dir}/${sample_name}/tmp && mkdir -p ${tmp}
+
+# cellranger output directory for the sample
+cellranger_dir=${dir}/CellRanger_output
+
+# bulk WGS bam and germline variants called from the WGS data
+bulk_bam=/your/path
+het_germline_mutations=/your/path
+bulk_bam_list=/your/path # bulk WGS bam for other samples in the batch
+
+# reference
+reference_genome=/your/path
+known_snp=/your/path
+masked_region=/your/path
+autosomes_bed=/your/path
+
+# Sankemake pipeline and slurm settings
+snakefile=/your/path/Snakefile.Duplex_Multiome
+# please update your slurm system job submission settings in "cluster-config.yml" in the following folder
+profile=/your/path/slurm_config
+
+# Go dir for duplexTools
+go_dir=/your/path
+
+# cut-off for filtering out variants present in the bulk WGS bam
+max_VAF_clonal_mutation=0.1 # only keep variants with <= 10% VAF shown in the bulk WGS bam
+
+# cell barcode list
+sed "s/,/\t/g" ${cellranger_dir}/per_barcode_metrics.csv | awk '{if ($4==1) print}' | awk '{print $1}' > ${base_dir}/per_barcode_metrics.cells
+
+# strand barcode (seperated by "\n")
+echo -e "AGACTTTC\nCCGAGGCA\nGATGCAGT\nTTCTACAG" > ${base_dir}/strand1
+echo -e "AGCTGCGT\nCAACCATC\nGTGGAGCA\nTCTATTAG" > ${base_dir}/strand2
+```
+
+#### Slurm configuration
+You should also edit the file `./pipeline/slurm_config/cluster-config.yml` to match your SLURM job submission settings. 
+
+We recommend starting with a dry run to preview job execution. Uncomment the following line in `run_duplex_multiome_mutation_analysispipeline.sh`
+```bash
+snakemake -s ${snakefile} --profile ${profile} --configfile ${configfile} --directory ${directory} -n # dry run
+```
+and then execute
+```bash
+cd demo
+sh run_duplex_multiome_mutation_analysispipeline.sh
+```
+To make a real run, uncomment 
+```bash
+# if running on a machine with a slurm system
+snakemake -s ${snakefile} --profile ${profile} --configfile ${configfile} --directory ${directory} --unlock # unlock a directory if there was a kill signal
+snakemake -s ${snakefile} --profile ${profile} --configfile ${configfile} --directory ${directory} --jobs 10 --default-resources "tmpdir='${tmp}'"
+```
+and the run `run_duplex_multiome_mutation_analysispipeline.sh`.
+
+If you want to run the demo on a machine without a slurm system as a test run, you could uncomment
+```bash
+# if running on a machine without a slurm system
+snakemake -s ${snakefile} --configfile ${configfile} --directory ${directory} --unlock # unlock a directory if there was a kill signal
+snakemake -s ${snakefile} --configfile ${configfile} --directory ${directory} --jobs 1 --default-resources "tmpdir='${tmp}'"
+```
+
+**Note:** Running on a machine without SLURM is not recommended for processing real datasets due to performance limitations.
+
 
 ## References
 1.	Li, H. & Durbin, R. Fast and accurate short read alignment with Burrows-Wheeler transform. Bioinformatics 25, 1754-60 (2009).

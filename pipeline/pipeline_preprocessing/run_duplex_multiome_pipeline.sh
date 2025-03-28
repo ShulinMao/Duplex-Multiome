@@ -1,5 +1,7 @@
 #!/bin/bash
 
+conda activate Duplex-Multiome
+
 snakefile=/lab-share/Gene-Lee-e2/Public/home/shulin/Duplex_multiome/scripts/pipeline_preprocessing/Snakefile.Duplex_Multiome
 profile=/lab-share/Gene-Lee-e2/Public/home/shulin/Duplex_multiome/scripts/slurm_config
 
