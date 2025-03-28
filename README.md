@@ -347,7 +347,7 @@ To make a real run, uncomment
 snakemake -s ${snakefile} --profile ${profile} --configfile ${configfile} --directory ${directory} --unlock # unlock a directory if there was a kill signal
 snakemake -s ${snakefile} --profile ${profile} --configfile ${configfile} --directory ${directory} --jobs 10 --default-resources "tmpdir='${tmp}'"
 ```
-and the run `run_duplex_multiome_mutation_analysispipeline.sh`.
+and the run `run_duplex_multiome_mutation_analysispipeline.sh` (about 30 - 90 mins).
 
 If you want to run the demo on a machine without a slurm system as a test run, you could uncomment
 ```bash
