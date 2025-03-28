@@ -325,8 +325,8 @@ max_VAF_clonal_mutation=0.1 # only keep variants with <= 10% VAF shown in the bu
 sed "s/,/\t/g" ${cellranger_dir}/per_barcode_metrics.csv | awk '{if ($4==1) print}' | awk '{print $1}' > ${base_dir}/per_barcode_metrics.cells
 
 # strand barcode (seperated by "\n")
-echo -e "AGACTTTC\nCCGAGGCA\nGATGCAGT\nTTCTACAG" > ${base_dir}/strand1
-echo -e "AGCTGCGT\nCAACCATC\nGTGGAGCA\nTCTATTAG" > ${base_dir}/strand2
+echo -e "your\nstrand1\nbarcodes" > ${base_dir}/strand1
+echo -e "your\nstrand2\nbarcodes" > ${base_dir}/strand2
 ```
 
 #### Slurm configuration
