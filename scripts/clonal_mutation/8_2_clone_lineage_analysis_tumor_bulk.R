@@ -1,0 +1,206 @@
+.libPaths("/lab-share/Gene-Lee-e2/Public/home/shulin/Duplex_multiome/Rpackages/")
+setwd("/lab-share/Gene-Lee-e2/Public/home/shulin/Duplex_multiome")
+
+library(dplyr)
+library(stringr)
+library(Polychrome)
+library(ggplot2)
+library(pheatmap)
+library(igraph)
+
+# triangle vertex shape
+mytriangle <- function(coords, v=NULL, params) {
+  vertex.color <- params("vertex", "color")
+  if (length(vertex.color) != 1 && !is.null(v)) {
+    vertex.color <- vertex.color[v]
+  }
+  vertex.size <- 1/200 * params("vertex", "size")
+  if (length(vertex.size) != 1 && !is.null(v)) {
+    vertex.size <- vertex.size[v]
+  }
+  
+  symbols(x=coords[,1], y=coords[,2], bg=vertex.color,
+          stars=cbind(vertex.size, vertex.size, vertex.size),
+          add=TRUE, inches=FALSE)
+}
+# clips as a circle
+add_shape("triangle", clip=shapes("circle")$clip,
+          plot=mytriangle)
+
+
+#-------------------------------------------------------------------------------
+# Read in clonal mutations after the germline filter
+clonal_mutation_list <- read.csv("results/clonal_mutation/clonal_mutation_list_COLO829BLT50_tumor_bulk_20240604.csv")
+clonal_mutation_list$key <- str_replace_all(clonal_mutation_list$key, pattern = ":", replacement = "-")
+clonal_mutation_list[clonal_mutation_list$cell_type == "B_lymphoblast",] -> clonal_mutation_list
+
+clonal_mutation_count <- clonal_mutation_list %>% group_by(key) %>% summarise("count" = n())
+plot(density(clonal_mutation_count$count))
+selected_clonal_mutation <- clonal_mutation_count[clonal_mutation_count$count > 5 & clonal_mutation_count$count < 10, "key", drop = T]
+#selected_clonal_mutation <- clonal_mutation_count[clonal_mutation_count$count > 3, "key", drop = T]
+clonal_mutation_list <- clonal_mutation_list[clonal_mutation_list$key %in% selected_clonal_mutation,]
+clonal_mutation_list[is.na(clonal_mutation_list$cell_type), "cell_type"] <- "filtered"
+
+cell_count <- clonal_mutation_list %>% group_by(cell) %>% summarise("count" = n())
+sum(cell_count$count > 1)
+selected_cell_list <- cell_count[cell_count$count > 5, "cell", drop=T]
+clonal_mutation_list <- clonal_mutation_list[clonal_mutation_list$cell %in% selected_cell_list,]
+
+clonal_mutation_matrix <- matrix(0, nrow = length(unique(clonal_mutation_list$cell)), ncol = length(unique(clonal_mutation_list$key)))
+rownames(clonal_mutation_matrix) <- unique(clonal_mutation_list$cell)
+colnames(clonal_mutation_matrix) <- unique(clonal_mutation_list$key)
+for (cell in rownames(clonal_mutation_matrix)){
+  cell_mutation <- clonal_mutation_list[clonal_mutation_list$cell == cell, "key"]
+  clonal_mutation_matrix[cell,] <- colnames(clonal_mutation_matrix) %in% cell_mutation
+}
+
+pheatmap(t(clonal_mutation_matrix), scale = "none", show_colnames = F,
+         cluster_rows = F, cluster_cols = T, legend = F)
+
+
+#-------------------------------------------------------------------------------
+adj_matrix <- matrix(0, nrow = length(unique(clonal_mutation_list$cell)), ncol = length(unique(clonal_mutation_list$cell)))
+rownames(adj_matrix) <- unique(clonal_mutation_list$cell)
+colnames(adj_matrix) <- unique(clonal_mutation_list$cell)
+for (cell_i in rownames(adj_matrix)){
+  cell_i_mutation <- clonal_mutation_list[clonal_mutation_list$cell == cell_i, "key"]
+  for (cell_j in colnames(adj_matrix)){
+    cell_j_mutation <- clonal_mutation_list[clonal_mutation_list$cell == cell_j, "key"]
+    adj_matrix[cell_i, cell_j] <- sum(cell_i_mutation %in% cell_j_mutation)
+  }
+}
+diag(adj_matrix) <- 0
+
+# Function to perform DFS and check if the depth exceeds 4
+dfs <- function(adj_matrix, start_node){
+  n <- ncol(adj_matrix)
+  visited <- rep(FALSE, n) # Vector to track visited nodes
+  
+  dfs_util <- function(node, current_depth, visited) {
+    visited[node] <- TRUE
+    if (current_depth >= 5) {
+      return(TRUE)
+    }
+    
+    for (neighbor in 1:n) {
+      if (adj_matrix[node, neighbor] > 0 & !visited[neighbor]) {
+        if (dfs_util(neighbor, current_depth + 1, visited)) {
+          return(TRUE)
+        }
+      }
+    }
+    return(FALSE)
+  }
+  return(dfs_util(start_node, 0, visited))
+}
+
+connected_cell_count <- c()
+for (cell in 1:nrow(adj_matrix)){
+  connected_cell_count[cell] <- dfs(adj_matrix, cell)
+}
+adj_matrix[connected_cell_count, connected_cell_count] -> adj_matrix
+
+cell_type <- c()
+case <- c()
+for (cell in rownames(adj_matrix)){
+  cell_type[cell] <- clonal_mutation_list[(clonal_mutation_list$cell == cell), "cell_type"][1]
+  case[cell] <- clonal_mutation_list[(clonal_mutation_list$cell == cell), "case_id"][1]
+}
+
+g <- graph_from_adjacency_matrix(adj_matrix, mode="undirected", weighted = T)
+V(g)$label <- ""
+V(g)$size <- 2.5
+layout <- layout_with_fr(g, dim = 2, niter = 2000, start.temp = 100)
+
+V(g)$shape <- as.character(factor(cell_type, levels = c("B_lymphoblast", "melanoma_fibroblast", "filtered"), labels = c("square", "circle", "triangle")))
+V(g)$color <- as.character(factor(cell_type, levels = c("B_lymphoblast", "melanoma_fibroblast", "filtered"), labels = c("cadetblue1", "coral1", "whitesmoke")))
+#pdf("./figures/lineage_tracing/graph/cell_type_tumor_bulk_20240604.pdf", width = 10, height = 10)
+plot(g, layout=layout)
+dev.off()
+
+V(g)$color <- as.character(factor(case, levels = c("COLO829BLT50_rep1", "COLO829BLT50_rep2"), labels = c("blue", "white")))
+#pdf("./figures/lineage_tracing/graph/rep_tumor_bulk_20240604.pdf", width = 10, height = 10)
+plot(g, layout=layout)
+dev.off()
+
+
+# # Use the Louvain method to detect communities
+# louvain_communities <- cluster_louvain(g)
+# table(cell_type, membership(louvain_communities)[names(cell_type)])
+# louvain_cluster <- membership(louvain_communities)[names(cell_type)]
+# V(g)$color <- as.character(factor(louvain_cluster, labels = createPalette(length(unique(louvain_cluster)), c("#ff0000", "#00ff00", "#0000ff"))))
+# plot(g, layout=layout, main="Louvain")
+# 
+# # Use the edge betweenness method to detect communities
+# edge_betweenness_communities <- cluster_edge_betweenness(g)
+# table(cell_type, membership(edge_betweenness_communities)[names(cell_type)])
+# edge_betweenness_cluster <- membership(edge_betweenness_communities)[names(cell_type)]
+# V(g)$color <- as.character(factor(edge_betweenness_cluster, labels = createPalette(length(unique(edge_betweenness_cluster)), c("#ff0000", "#00ff00", "#0000ff"))))
+# plot(g, layout=layout, main="Edge Betweenness")
+
+# Use the label propagation method to detect communities
+label_prop_communities <- cluster_label_prop(g)
+table(cell_type, membership(label_prop_communities)[names(cell_type)])
+label_prop_cluster <- membership(label_prop_communities)[names(cell_type)]
+label_prop_color <- createPalette(length(unique(label_prop_cluster)), c("#ff0000", "#00ff00", "#0000ff"))
+V(g)$color <- as.character(factor(label_prop_cluster, labels = label_prop_color))
+pdf("./figures/lineage_tracing/graph/label_prop_clustering_tumor_bulk_20240604.pdf", width = 10, height = 10)
+plot(g, layout=layout, main="Label Propagation")
+dev.off()
+
+# Use the Walktrap method to detect communities
+# walktrap_communities <- cluster_walktrap(g)
+# table(cell_type, membership(walktrap_communities)[names(cell_type)])
+# walktrap_cluster <- membership(walktrap_communities)[names(cell_type)]
+# V(g)$color <- as.character(factor(walktrap_cluster, labels = createPalette(length(unique(walktrap_cluster)), c("#ff0000", "#00ff00", "#0000ff"))))
+# plot(g, layout=layout, main="Walktrap")
+
+#-------------------------------------------------------------------------------
+df_label_prop_cluster <- data.frame(label_prop_cluster)
+df_label_prop_cluster[,"cell"] <- row.names(df_label_prop_cluster)
+df_label_prop_cluster <- inner_join(clonal_mutation_list, df_label_prop_cluster, by = "cell")
+df_label_prop_cluster$cell_type <- factor(df_label_prop_cluster$cell_type, levels = c("B_lymphoblast", "melanoma_fibroblast", "filtered"))
+
+df_label_prop_cluster_count <- df_label_prop_cluster[!(duplicated(str_c(df_label_prop_cluster$cell, df_label_prop_cluster$label_prop_cluster, df_label_prop_cluster$case_id))),]
+ggplot(df_label_prop_cluster_count, aes(x=label_prop_cluster, fill=cell_type, group=cell_type)) +
+  
+  geom_bar(stat="count") +
+  scale_x_continuous(breaks=seq(1, length(unique(df_label_prop_cluster$label_prop_cluster))),
+                   labels=seq(1, length(unique(df_label_prop_cluster$label_prop_cluster)))) +
+  theme_classic() +
+  scale_fill_manual(values=c("cadetblue1", "coral1", "whitesmoke")) +
+  labs(x = "Clusters", y = "# of cells", fill = "Cell Type")
+ggsave("./figures/lineage_tracing/label_prop_cluster_tumor_bulk_20240604.pdf", width = 8, height = 4)
+
+clonal_mutation_matrix <- matrix(0, nrow = length(unique(df_label_prop_cluster$cell)), ncol = length(unique(df_label_prop_cluster$key)))
+rownames(clonal_mutation_matrix) <- unique(df_label_prop_cluster$cell)
+colnames(clonal_mutation_matrix) <- unique(df_label_prop_cluster$key)
+for (cell in rownames(clonal_mutation_matrix)){
+  cell_mutation <- df_label_prop_cluster[df_label_prop_cluster$cell == cell, "key"]
+  clonal_mutation_matrix[cell,] <- colnames(clonal_mutation_matrix) %in% cell_mutation
+}
+cell_order <- unique(df_label_prop_cluster$cell[order(df_label_prop_cluster$label_prop_cluster, decreasing = F)])
+clonal_mutation_matrix <- clonal_mutation_matrix[cell_order,]
+
+annotation_col <- df_label_prop_cluster[, c("cell", "label_prop_cluster", "cell_type")]
+annotation_col <- annotation_col[!duplicated(annotation_col$cell),]
+row.names(annotation_col) <- annotation_col$cell
+annotation_col <- annotation_col[cell_order, c("label_prop_cluster", "cell_type")]
+annotation_col$label_prop_cluster <- factor(annotation_col$label_prop_cluster,
+                                            levels = seq(1, length(unique(df_label_prop_cluster$label_prop_cluster))))
+annotation_colors <- list(cell_type = c("B_lymphoblast" = "cadetblue1", 
+                                        "melanoma_fibroblast" = "coral1", 
+                                        "filtered" = "whitesmoke"),
+                          label_prop_cluster = label_prop_color)
+names(annotation_colors[["label_prop_cluster"]]) <- seq(1, length(unique(df_label_prop_cluster$label_prop_cluster)))
+
+pheatmap(t(clonal_mutation_matrix), scale = "none", show_colnames = F,
+         cluster_rows = T, cluster_cols = F, legend = F,
+         annotation_col = annotation_col, 
+         annotation_colors = annotation_colors,
+         #border_color = NA,
+         cellwidth = 1, 
+         cellheight = 10, 
+         filename = "figures/lineage_tracing/heatmap_label_prop_cluster_tumor_bulk_20240604.pdf", height = 10)
+
+

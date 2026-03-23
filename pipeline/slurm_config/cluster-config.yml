@@ -1,0 +1,6 @@
+__default__:
+    partition: "bch-compute" # Please edit this to match your SLURM job submission settings.
+    time: 60 # in min
+    threads: 1
+    mem: 2000
+    output: output_%j.out 
